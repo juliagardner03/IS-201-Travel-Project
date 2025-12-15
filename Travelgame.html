@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🌴 Tropical Memory Game 🌺</title>
+
+<style>
+/* ================== BASE ================== */
+body {
+  margin: 0;
+  font-family: "Poppins", sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #ff6a6a;
+  background: linear-gradient(
+    180deg,
+    #7adfff 0%,
+    #b5fffc 45%,
+    #ffe5b4 100%
+  );
+  overflow: hidden;
+  position: relative;
+}
+
+/* ================== SOFT FLOATING DOTS ================== */
+.bg-dot {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  animation: floatAround linear infinite;
+}
+
+@keyframes floatAround {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(40px, -60px); }
+  50%  { transform: translate(-30px, -120px); }
+  75%  { transform: translate(60px, -40px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ================== TITLE ================== */
+h1 {
+  margin-top: 28px;
+  font-size: 2.8rem;
+  text-shadow: 2px 2px 8px rgba(255,255,255,0.8);
+}
+
+/* ================== CONTROLS ================== */
+#controls {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+select, button {
+  padding: 10px 18px;
+  border-radius: 14px;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.15);
+}
+
+button {
+  background: #ff8c94;
+  color: white;
+}
+
+button.secondary {
+  background: #7adfff;
+}
+
+/* ================== STATS ================== */
+#stats {
+  display: flex;
+  gap: 25px;
+  margin-top: 14px;
+  font-weight: bold;
+}
+
+/* ================== GAME BOARD ================== */
+#game-board {
+  display: none;
+  margin: 28px;
+  gap: 14px;
+  max-width: 600px;
+}
+
+/* ================== CARDS ================== */
+.card {
+  aspect-ratio: 1/1;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #fff1f3, #ffdede);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.45s;
+  box-shadow: 0 8px 18px rgba(0,0,0,0.15);
+}
+
+.card.flipped { transform: rotateY(180deg); }
+
+.card .front,
+.card .back {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  backface-visibility: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.3em;
+}
+
+.card .front {
+  background: linear-gradient(145deg, #ffe4e1, #ffdede);
+}
+
+.card .back {
+  background: white;
+  transform: rotateY(180deg);
+}
+
+.card.matched {
+  background: linear-gradient(145deg, #4caf50, #81c784);
+  pointer-events: none;
+  animation: pop 0.3s ease;
+}
+
+@keyframes pop {
+  50% { transform: scale(1.15) rotateY(180deg); }
+}
+
+/* ================== FEEDBACK ================== */
+#feedback {
+  font-size: 1.2em;
+  font-weight: bold;
+  margin-bottom: 25px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🌴 Tropical Memory Game 🌺</h1>
+
+<div id="controls">
+  <select id="difficulty">
+    <option value="8">Easy 🐢</option>
+    <option value="10" selected>Medium 🌴</option>
+    <option value="12">Hard 🌊</option>
+  </select>
+  <button id="start-btn">▶ Start</button>
+  <button id="restart-btn" class="secondary">🔁 Restart</button>
+
+</div>
+
+<div id="stats">
+  <div>Moves: <span id="moves">0</span></div>
+  <div>Matches: <span id="matches">0</span></div>
+  <div>Time: <span id="time">0</span>s</div>
+</div>
+
+<div id="game-board"></div>
+<div id="feedback"></div>
+
+<audio id="music" loop>
+  <source src="https://actions.google.com/sounds/v1/water/beach_waves.ogg">
+</audio>
+
+<!-- Floating background dots -->
+<div class="bg-dot" style="top:80%; left:10%; animation-duration:60s;"></div>
+<div class="bg-dot" style="top:70%; left:30%; animation-duration:75s;"></div>
+<div class="bg-dot" style="top:50%; left:60%; animation-duration:68s;"></div>
+<div class="bg-dot" style="top:40%; left:80%; animation-duration:82s;"></div>
+<div class="bg-dot" style="top:20%; left:20%; animation-duration:90s;"></div>
+<div class="bg-dot" style="top:30%; left:50%; animation-duration:72s;"></div>
+
+<script>
+/* ================== GAME LOGIC ================== */
+const ALL_ICONS = ["🌴","🐢","🏖️","🏝️","🕶️","🥥","🏄","🦀","🪁","🌞","🐠","🦜"];
+
+const board = document.getElementById("game-board");
+const movesEl = document.getElementById("moves");
+const matchesEl = document.getElementById("matches");
+const timeEl = document.getElementById("time");
+const feedback = document.getElementById("feedback");
+
+let firstCard, secondCard, lock;
+let moves, matches, timer, time;
+let icons = [];
+
+function startGame() {
+  reset();
+  const pairCount = Number(document.getElementById("difficulty").value);
+  icons = ALL_ICONS.slice(0, pairCount);
+  const cards = [...icons, ...icons].sort(() => Math.random() - 0.5);
+
+  board.style.display = "grid";
+  board.style.gridTemplateColumns = "repeat(auto-fit, minmax(80px, 1fr))";
+
+  cards.forEach(icon => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.dataset.icon = icon;
+    card.innerHTML = `<div class="front"></div><div class="back">${icon}</div>`;
+    card.addEventListener("click", () => flip(card));
+    board.appendChild(card);
+  });
+
+  timer = setInterval(() => {
+    time++;
+    timeEl.textContent = time;
+  }, 1000);
+}
+
+function flip(card) {
+  if (lock || card === firstCard || card.classList.contains("matched")) return;
+
+  card.classList.add("flipped");
+
+  if (!firstCard) {
+    firstCard = card;
+    return;
+  }
+
+  secondCard = card;
+  lock = true;
+  moves++;
+  movesEl.textContent = moves;
+
+  if (firstCard.dataset.icon === secondCard.dataset.icon) {
+    firstCard.classList.add("matched");
+    secondCard.classList.add("matched");
+    matches++;
+    matchesEl.textContent = matches;
+    resetTurn();
+
+    if (matches === icons.length) {
+      clearInterval(timer);
+      feedback.textContent = `🎉 You won in ${time}s with ${moves} moves!`;
+    }
+  } else {
+    setTimeout(() => {
+      firstCard.classList.remove("flipped");
+      secondCard.classList.remove("flipped");
+      resetTurn();
+    }, 800);
+  }
+}
+
+function resetTurn() {
+  [firstCard, secondCard, lock] = [null, null, false];
+}
+
+function reset() {
+  clearInterval(timer);
+  board.innerHTML = "";
+  moves = matches = time = 0;
+  lock = false;
+  movesEl.textContent = matchesEl.textContent = timeEl.textContent = 0;
+  feedback.textContent = "";
+}
+
+/* ================== BUTTONS ================== */
+document.getElementById("start-btn").onclick = startGame;
+document.getElementById("restart-btn").onclick = startGame;
+
+document.getElementById("music-btn").onclick = () => {
+  const music = document.getElementById("music");
+  music.paused ? music.play() : music.pause();
+};
+</script>
+
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
